@@ -1,0 +1,7 @@
+internalPrivateIp: 10.42.0.1
+externalPrivateIp: 10.42.0.2
+forwardIp: "< ip to forward to >"
+ports: "< ports to forward to in the form in:out,in:out >"
+host: "< ip or hostname of external host >"
+sshKeySecret: ssh-key
+tag: 0.0.2

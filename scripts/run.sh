@@ -8,6 +8,11 @@ echo "  HOST: ${HOST}"
 echo "  FORWARD_IP: ${FORWARD_IP}"
 echo "  PORTS: ${PORTS}"
 
+echo "Import SSH key..."
+mkdir -p /root/.ssh/
+cp /ssh-key/* /root/.ssh/
+chmod 0600 /root/.ssh -R
+
 POD_IFACE="eth0"
 POD_IP="$(ip -4 addr show "${POD_IFACE}" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
 
@@ -18,10 +23,10 @@ wg pubkey < /tmp/wg/private-key > /tmp/wg/public-key
 INTERNAL_PUBKEY="$(cat /tmp/wg/public-key)"
 
 function remote() {
-  ssh -l root $HOST "$@"
+  ssh -o "StrictHostKeyChecking=no" -l root $HOST "$@"
 }
 
-scp /scripts/external-setup.sh root@$HOST:/tmp/external-setup.sh
+scp -o "StrictHostKeyChecking=no" /scripts/external-setup.sh root@$HOST:/tmp/external-setup.sh
 remote "PORTS=\"${PORTS}\" INTERNAL_PRIVATE_IP=\"${INTERNAL_PRIVATE_IP}\" EXTERNAL_PRIVATE_IP=\"${EXTERNAL_PRIVATE_IP}\" INTERNAL_PUBKEY=\"${INTERNAL_PUBKEY}\" /tmp/external-setup.sh"
 
 EXTERNAL_PUBKEY="$(remote "cat /tmp/wg/public-key")"

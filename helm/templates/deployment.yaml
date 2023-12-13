@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tunnel-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tunnel-ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tunnel-ingress
+  template:
+    metadata:
+      labels:
+        app: tunnel-ingress
+    spec:
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: ssh-key
+            defaultMode: 0400
+      containers:
+        - name: tunnel
+          image: dajudge/tunnel-ingress:{{ .Values.tag }}
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /ssh-key/
+              readOnly: true
+          env:
+            - name: INTERNAL_PRIVATE_IP
+              value: {{ .Values.internalPrivateIp }}
+            - name: EXTERNAL_PRIVATE_IP
+              value: {{ .Values.externalPrivateIp }}
+            - name: FORWARD_IP
+              value: {{ .Values.forwardIp }}
+            - name: PORTS
+              value: {{ .Values.ports }}
+            - name: HOST
+              value: {{ .Values.host }}
+          securityContext:
+            privileged: true
