@@ -1,15 +1,8 @@
 FROM ubuntu:22.04
 
 RUN apt update && \
-    apt install -y wireguard-tools
+    apt install -y wireguard-tools iproute2 iptables iputils-ping curl openssh-client
 
-RUN apt update && \
-    apt install -y iproute2 iptables net-tools iputils-ping curl
+ADD scripts/* /scripts/
 
-RUN apt update && \
-    apt install -y openssh-client
-
-ADD external-setup.sh /
-ADD run.sh /
-
-CMD ["/run.sh"]
+CMD ["/scripts/run.sh"]

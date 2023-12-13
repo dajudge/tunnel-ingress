@@ -21,7 +21,7 @@ function remote() {
   ssh -l root $HOST "$@"
 }
 
-scp /external-setup.sh root@$HOST:/tmp/external-setup.sh
+scp /scripts/external-setup.sh root@$HOST:/tmp/external-setup.sh
 remote "PORTS=\"${PORTS}\" INTERNAL_PRIVATE_IP=\"${INTERNAL_PRIVATE_IP}\" EXTERNAL_PRIVATE_IP=\"${EXTERNAL_PRIVATE_IP}\" INTERNAL_PUBKEY=\"${INTERNAL_PUBKEY}\" /tmp/external-setup.sh"
 
 EXTERNAL_PUBKEY="$(remote "cat /tmp/wg/public-key")"
