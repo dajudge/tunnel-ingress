@@ -42,5 +42,10 @@ spec:
               value: '{{- include "ports.list" . | trimSuffix "," }}'
             - name: HOST
               value: {{ .Values.host }}
+            - name: PING_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pingSecret.name }}
+                  key: {{ .Values.pingSecret.key }}
           securityContext:
             privileged: true

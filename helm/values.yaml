@@ -2,7 +2,10 @@ internalPrivateIp: 10.42.0.1
 externalPrivateIp: 10.42.0.2
 host: ip or hostname of the external host
 sshKeySecret: ssh-key
-tag: 0.0.3
+pingSecret:
+  name: ping-secret
+  key: url
+tag: 0.0.4
 ports:
   - exposedPort: 80
     targetIp: someIp

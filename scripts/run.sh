@@ -48,4 +48,4 @@ for PORT in $(echo "${PORTS}" | tr ',' '\n'); do
   iptables -t nat -A POSTROUTING -p tcp -d "${IP_OUTPUT}" --dport "${PORT_OUTPUT}" -j SNAT --to-source "${POD_IP}"
 done
 
-ping -i 5 "${EXTERNAL_PRIVATE_IP}"
+remote "while :; do curl -s ${PING_URL}; sleep 60; done"
