@@ -1,3 +1,9 @@
+{{- define "ports.list" -}}
+{{- if .Values.ports }}
+{{- range .Values.ports }}{{(print .exposedPort ":" .targetIp ":" .targetPort ) }},{{- end }}
+{{- end }}
+{{- end }}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,10 +38,8 @@ spec:
               value: {{ .Values.internalPrivateIp }}
             - name: EXTERNAL_PRIVATE_IP
               value: {{ .Values.externalPrivateIp }}
-            - name: FORWARD_IP
-              value: {{ .Values.forwardIp }}
             - name: PORTS
-              value: {{ .Values.ports }}
+              value: '{{- include "ports.list" . | trimSuffix "," }}'
             - name: HOST
               value: {{ .Values.host }}
           securityContext:

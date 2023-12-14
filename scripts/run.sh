@@ -5,7 +5,6 @@ echo "Config:"
 echo "  INTERNAL_PRIVATE_IP: ${INTERNAL_PRIVATE_IP}"
 echo "  EXTERNAL_PRIVATE_IP: ${EXTERNAL_PRIVATE_IP}"
 echo "  HOST: ${HOST}"
-echo "  FORWARD_IP: ${FORWARD_IP}"
 echo "  PORTS: ${PORTS}"
 
 echo "Import SSH key..."
@@ -42,10 +41,11 @@ ip link set up dev wg0
 echo "Configuring internal iptables..."
 for PORT in $(echo "${PORTS}" | tr ',' '\n'); do
   PORT_INPUT="$(echo "${PORT}" | awk -F ':' '{print $1}')"
-  PORT_OUTPUT="$(echo "${PORT}" | awk -F ':' '{print $2}')"
-  echo "${PORT_INPUT} -> ${FORWARD_IP}:${PORT_OUTPUT}"
-  iptables -t nat -A PREROUTING -p tcp --dport "${PORT_INPUT}" -j DNAT --to-destination "${FORWARD_IP}:${PORT_OUTPUT}"
-  iptables -t nat -A POSTROUTING -p tcp -d "${FORWARD_IP}" --dport "${PORT_OUTPUT}" -j SNAT --to-source "${POD_IP}"
+  IP_OUTPUT="$(echo "${PORT}" | awk -F ':' '{print $2}')"
+  PORT_OUTPUT="$(echo "${PORT}" | awk -F ':' '{print $3}')"
+  echo "${PORT_INPUT} -> ${IP_OUTPUT}:${PORT_OUTPUT}"
+  iptables -t nat -A PREROUTING -p tcp --dport "${PORT_INPUT}" -j DNAT --to-destination "${IP_OUTPUT}:${PORT_OUTPUT}"
+  iptables -t nat -A POSTROUTING -p tcp -d "${IP_OUTPUT}" --dport "${PORT_OUTPUT}" -j SNAT --to-source "${POD_IP}"
 done
 
 ping -i 5 "${EXTERNAL_PRIVATE_IP}"
