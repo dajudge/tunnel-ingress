@@ -43,9 +43,10 @@ for PORT in $(echo "${PORTS}" | tr ',' '\n'); do
   PORT_INPUT="$(echo "${PORT}" | awk -F ':' '{print $1}')"
   IP_OUTPUT="$(echo "${PORT}" | awk -F ':' '{print $2}')"
   PORT_OUTPUT="$(echo "${PORT}" | awk -F ':' '{print $3}')"
-  echo "${PORT_INPUT} -> ${IP_OUTPUT}:${PORT_OUTPUT}"
-  iptables -t nat -A PREROUTING -p tcp --dport "${PORT_INPUT}" -j DNAT --to-destination "${IP_OUTPUT}:${PORT_OUTPUT}"
-  iptables -t nat -A POSTROUTING -p tcp -d "${IP_OUTPUT}" --dport "${PORT_OUTPUT}" -j SNAT --to-source "${POD_IP}"
+  PROTOCOL="$(echo "${PORT}" | awk -F ':' '{print $4}')"
+  echo "${PROTOCOL} ${PORT_INPUT} --> ${IP_OUTPUT}:${PORT_OUTPUT}"
+  iptables -t nat -A PREROUTING -p ${PROTOCOL} --dport "${PORT_INPUT}" -j DNAT --to-destination "${IP_OUTPUT}:${PORT_OUTPUT}"
+  iptables -t nat -A POSTROUTING -p ${PROTOCOL} -d "${IP_OUTPUT}" --dport "${PORT_OUTPUT}" -j SNAT --to-source "${POD_IP}"
 done
 
 remote "while :; do date; curl '${PING_URL}'; echo ""; sleep 60; done"

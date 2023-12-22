@@ -5,11 +5,13 @@ sshKeySecret: ssh-key
 pingSecret:
   name: ping-secret
   key: url
-tag: 0.0.7
+tag: 0.0.8
 ports:
   - exposedPort: 80
     targetIp: someIp
     targetPort: 30080
+    protocol: tcp
   - exposedPort: 443
     targetIp: someIp
     targetPort: 30443
+    protocol: udp

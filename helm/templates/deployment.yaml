@@ -1,6 +1,6 @@
 {{- define "ports.list" -}}
 {{- if .Values.ports }}
-{{- range .Values.ports }}{{(print .exposedPort ":" .targetIp ":" .targetPort ) }},{{- end }}
+{{- range .Values.ports }}{{(print .exposedPort ":" .targetIp ":" .targetPort ":" .protocol ) }},{{- end }}
 {{- end }}
 {{- end }}
 

@@ -39,10 +39,11 @@ iptables -t nat -N TUNNEL-PREROUTING
 iptables -t nat -N TUNNEL-POSTROUTING
 
 for PORT in $(echo "${PORTS}" | tr ',' '\n'); do
-  PORT="$(echo "${PORT}" | awk -F ':' '{print $1}')"
-  echo "${PORT} -> ${EXTERNAL_PRIVATE_IP}:${PORT}"
-  iptables -t nat -A TUNNEL-PREROUTING -p tcp --dport "${PORT}" -j DNAT --to-destination "${INTERNAL_PRIVATE_IP}:${PORT}"
-  iptables -t nat -A TUNNEL-POSTROUTING -p tcp -d "${INTERNAL_PRIVATE_IP}" --dport "${PORT}" -j SNAT --to-source "${EXTERNAL_PRIVATE_IP}"
+  INGRESS_PORT="$(echo "${PORT}" | awk -F ':' '{print $1}')"
+  PROTOCOL="$(echo "${PORT}" | awk -F ':' '{print $4}')"
+  echo "${PROTOCOL} ${INGRESS_PORT} -> ${EXTERNAL_PRIVATE_IP}:${INGRESS_PORT}"
+  iptables -t nat -A TUNNEL-PREROUTING -p ${PROTOCOL} --dport "${INGRESS_PORT}" -j DNAT --to-destination "${INTERNAL_PRIVATE_IP}:${INGRESS_PORT}"
+  iptables -t nat -A TUNNEL-POSTROUTING -p ${PROTOCOL} -d "${INTERNAL_PRIVATE_IP}" --dport "${INGRESS_PORT}" -j SNAT --to-source "${EXTERNAL_PRIVATE_IP}"
 done
 
 iptables -t nat -A TUNNEL-PREROUTING -j RETURN
