@@ -29,11 +29,11 @@ remote "PORTS=\"${PORTS}\" INTERNAL_PRIVATE_IP=\"${INTERNAL_PRIVATE_IP}\" EXTERN
 EXTERNAL_PUBKEY="$(remote "cat /tmp/wg/public-key")"
 
 echo "Configuring internal wireguard..."
-if [ ! -f "/tmp/internal_wireguard_configured" ]; then
+if [ ! -f "/var/run/tunnel-ingress/internal_wireguard_configured" ]; then
   echo "Creating wireguard interface..."
   ip link add dev wg0 type wireguard
   ip address add dev wg0 "${INTERNAL_PRIVATE_IP}/24"
-  touch /tmp/internal_wireguard_configured
+  touch /var/run/tunnel-ingress/internal_wireguard_configured
 else
   echo "Wireguard interface already existing"
 fi

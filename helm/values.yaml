@@ -5,7 +5,7 @@ sshKeySecret: ssh-key
 pingSecret:
   name: ping-secret
   key: url
-tag: 0.0.8
+tag: 0.0.9
 ports:
   - exposedPort: 80
     targetIp: someIp

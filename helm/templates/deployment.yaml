@@ -26,7 +26,7 @@ spec:
           secret:
             secretName: ssh-key
             defaultMode: 0400
-        - name: tmp
+        - name: run-dir
           emptyDir: {}
       containers:
         - name: tunnel
@@ -35,8 +35,8 @@ spec:
             - name: ssh-key
               mountPath: /ssh-key/
               readOnly: true
-            - name: tmp
-              mountPath: /tmp/
+            - name: run-dir
+              mountPath: /var/run/tunnel-ingress/
           env:
             - name: INTERNAL_PRIVATE_IP
               value: {{ .Values.internalPrivateIp }}
