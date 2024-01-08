@@ -26,18 +26,12 @@ spec:
           secret:
             secretName: ssh-key
             defaultMode: 0400
-        - name: run-dir
-          emptyDir: {}
-      containers:
-        - name: tunnel
+      initContainers:
+        - name: network-init
           image: dajudge/tunnel-ingress:{{ .Values.tag }}
-          volumeMounts:
-            - name: ssh-key
-              mountPath: /ssh-key/
-              readOnly: true
-            - name: run-dir
-              mountPath: /var/run/tunnel-ingress/
           env:
+            - name: JOB
+              value: network-init
             - name: INTERNAL_PRIVATE_IP
               value: {{ .Values.internalPrivateIp }}
             - name: EXTERNAL_PRIVATE_IP
@@ -46,10 +40,25 @@ spec:
               value: '{{- include "ports.list" . | trimSuffix "," }}'
             - name: HOST
               value: {{ .Values.host }}
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /ssh-key/
+          securityContext:
+            privileged: true
+      containers:
+        - name: tunnel
+          image: dajudge/tunnel-ingress:{{ .Values.tag }}
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /ssh-key/
+              readOnly: true
+          env:
+            - name: JOB
+              value: keep-alive
+            - name: HOST
+              value: {{ .Values.host }}
             - name: PING_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.pingSecret.name }}
                   key: {{ .Values.pingSecret.key }}
-          securityContext:
-            privileged: true
