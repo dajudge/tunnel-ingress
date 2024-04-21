@@ -20,8 +20,6 @@ jobs:
         run: echo "::set-output name=tag::$(date -u +'%Y%m%d%H%M%S')"
 
       - name: Set up QEMU
-        with:
-          platforms: amd64,arm64,arm7
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
