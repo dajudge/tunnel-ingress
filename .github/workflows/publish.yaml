@@ -26,7 +26,7 @@ jobs:
 
       - name: Set up QEMU
         with:
-          platforms: amd64,arm64
+          platforms: amd64,arm64,arm7
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -44,6 +44,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: ${{env.CONTAINER_IMAGE_PATH}}:${{ steps.tag.outputs.tag }}
