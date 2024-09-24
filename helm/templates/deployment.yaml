@@ -26,13 +26,15 @@ spec:
           secret:
             secretName: ssh-key
             defaultMode: 0400
-      containers:
-        - name: tunnel
+      initContainers:
+        - name: tunnel-setup
           image: dajudge/tunnel-ingress:{{ .Values.tag }}
           volumeMounts:
             - name: ssh-key
               mountPath: /ssh-key/
-              readOnly: true
+          securityContext:
+            privileged: true
+          command: ["/scripts/tunnel-setup.sh"]
           env:
             - name: INTERNAL_PRIVATE_IP
               value: {{ .Values.internalPrivateIp }}
@@ -42,10 +44,19 @@ spec:
               value: '{{- include "ports.list" . | trimSuffix "," }}'
             - name: HOST
               value: {{ .Values.host }}
+      containers:
+        - name: remote-ping
+          image: dajudge/tunnel-ingress:{{ .Values.tag }}
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /ssh-key/
+              readOnly: true
+          command: ["/scripts/remote-ping.sh"]
+          env:
+            - name: HOST
+              value: {{ .Values.host }}
             - name: PING_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.pingSecret.name }}
                   key: {{ .Values.pingSecret.key }}
-          securityContext:
-            privileged: true
