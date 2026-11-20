@@ -77,5 +77,4 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.cloudflareDdns.tokenSecret.name | quote }}
                   key: {{ .Values.cloudflareDdns.tokenSecret.key | quote }}
-                  optional: true
             {{- end }}

@@ -8,8 +8,9 @@ There is no extra Deployment, sidecar, ConfigMap, or readiness probe.
 When enabled, configure the existing Cloudflare DNS-only A record's `zoneId`,
 `recordId`, and `recordName`. `dryRun` defaults to true. `tokenSecret.name/key`
 select an existing Secret in the release namespace, just as `pingSecret` supplies
-the dogado URL. The token reference is optional so a missing Cloudflare Secret
-cannot prevent dogado from running; it produces a fallback diagnostic instead.
+the dogado URL. With Cloudflare enabled, both referenced Secrets must exist
+before the replacement container can start. Verify unsealing before activation.
+In dogado-only mode, no Cloudflare Secret is referenced.
 
 The public SSH host needs Python 3.8+ and curl. Configuration is sent as eight
 single-line fields over SSH stdin, followed by the public runner source.

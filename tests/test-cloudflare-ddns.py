@@ -207,7 +207,7 @@ def contracts():
     assert pod['initContainers'] == baseline[0]['spec']['template']['spec']['initContainers']
     env = {e['name']: e for e in pod['containers'][0]['env']}
     assert env['CF_DRY_RUN']['value'] == 'true'
-    assert env['CF_API_TOKEN']['valueFrom']['secretKeyRef'] == {'name': 'cloudflare-api-token', 'key': 'api-token', 'optional': True}
+    assert env['CF_API_TOKEN']['valueFrom']['secretKeyRef'] == {'name': 'cloudflare-api-token', 'key': 'api-token'}
     assert env['PING_URL'] == baseline[0]['spec']['template']['spec']['containers'][0]['env'][1]
     clean = copy.deepcopy(docs[0])
     clean['spec']['template']['spec']['containers'][0]['env'] = [e for e in clean['spec']['template']['spec']['containers'][0]['env'] if not e['name'].startswith('CF_')]
