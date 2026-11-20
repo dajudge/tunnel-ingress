@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "cloudflareDdns": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "image",
+          "recordName",
+          "zoneId",
+          "recordId",
+          "dryRun",
+          "intervalSeconds",
+          "enabled",
+          "existingSecret"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "pattern": "@sha256:[a-f0-9]{64}$"
+          },
+          "recordName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "zoneId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "recordId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "intervalSeconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 3600
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "existingSecret": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
