@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Parallel DDNS safety tests, tunnel preservation and offline runtime health checks."""
+"""Shared remote-ping loop, credential transport and provider isolation tests."""
 import copy
 import importlib.util
-import io
 import json
 import os
 from pathlib import Path
 import subprocess
-import tarfile
 import unittest
+from unittest.mock import patch
+import tempfile
 import sys
 sys.dont_write_bytecode = True
 
@@ -22,7 +22,7 @@ def module(name, path):
     return value
 
 
-updater = module('updater', ROOT / 'helm/files/cloudflare-ddns/update.py')
+updater = module('updater', ROOT / 'scripts/remote-ddns.py')
 Z, R = 'a' * 32, 'b' * 32
 
 
@@ -87,6 +87,103 @@ class DDNS(unittest.TestCase):
             updater.reconcile(API(), Z, R, 'www.example.test', 'www.example.test')
 
 
+def fields():
+    return ['https://dogado.example.test/?credential=fixture', 'fixture-token', Z, R,
+            'www.example.test', '89.58.40.25', 'true', '60']
+
+
+class SharedLoop(unittest.TestCase):
+    def test_each_provider_is_attempted_even_if_other_fails(self):
+        for failure in ('dogado', 'cloudflare', None):
+            calls = []
+            def ping(url):
+                calls.append('dogado')
+                if failure == 'dogado':
+                    raise RuntimeError('sensitive error must not be logged')
+            def update(*args):
+                calls.append('cloudflare')
+                if failure == 'cloudflare':
+                    raise RuntimeError('sensitive error must not be logged')
+                return {'event': 'unchanged'}
+            events = updater.cycle(updater.configuration(fields()), ping, update)
+            self.assertEqual(calls, ['dogado', 'cloudflare'])
+            self.assertEqual([e['provider'] for e in events], calls)
+            self.assertNotIn('sensitive', json.dumps(events))
+            self.assertNotIn('fixture', json.dumps(events))
+
+    def test_configuration_is_explicit_and_single_line(self):
+        self.assertTrue(updater.configuration(fields())['dry_run'])
+        f = fields(); f[6] = 'false'
+        self.assertFalse(updater.configuration(f)['dry_run'])
+        for index, value in [(0, 'file:///tmp/foo'), (1, ''), (1, 'token\ncode'),
+                             (2, 'wrong'), (6, 'False'), (7, '0')]:
+            f = fields(); f[index] = value
+            with self.assertRaises(ValueError):
+                updater.configuration(f)
+
+    def test_dogado_url_is_stdin_not_argv_and_response_is_suppressed(self):
+        with patch.object(updater.subprocess, 'run') as run:
+            updater.dogado_ping(fields()[0])
+            args, kwargs = run.call_args
+            self.assertNotIn(fields()[0], args[0])
+            self.assertIn(fields()[0], kwargs['input'])
+            self.assertEqual(kwargs['stdout'], subprocess.DEVNULL)
+            self.assertEqual(kwargs['stderr'], subprocess.DEVNULL)
+
+    def wrapper(self, overrides=None, expected_code=0):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name)
+        (path / 'remote-ping.sh').write_text((ROOT / 'scripts/remote-ping.sh').read_text())
+        (path / 'remote-ddns.py').write_text((ROOT / 'scripts/remote-ddns.py').read_text())
+        (path / 'ssh-access.sh').write_text('''remote() {
+  if [[ "$1" == python3* ]]; then
+    [[ $(declare -p CF_API_TOKEN) != 'declare -x '* ]] || return 99
+    [[ $(declare -p PING_URL) != 'declare -x '* ]] || return 99
+    printf '%s' "$1" > "$TEST_DIR/command"
+    cat > "$TEST_DIR/input"
+    return "${MOCK_COMBINED_EXIT:-0}"
+  fi
+  echo legacy > "$TEST_DIR/legacy"
+}
+''')
+        env = dict(os.environ, PING_URL=fields()[0], CF_API_TOKEN=fields()[1],
+                   CF_ZONE_ID=Z, CF_RECORD_ID=R, CF_RECORD_NAME=fields()[4],
+                   HOST=fields()[5], CF_DDNS_ENABLED='true', CF_DRY_RUN='true', TEST_DIR=str(path))
+        env.update(overrides or {})
+        result = subprocess.run(['bash', str(path / 'remote-ping.sh')], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, expected_code, result.stderr)
+        self.assertNotIn(fields()[0], result.stdout + result.stderr)
+        self.assertNotIn(fields()[1], result.stdout + result.stderr)
+        return path
+
+    def test_wrapper_sends_config_as_stdin_then_source_over_one_connection(self):
+        path = self.wrapper()
+        self.assertFalse((path / 'legacy').exists())
+        command = (path / 'command').read_text()
+        self.assertNotIn(fields()[0], command)
+        self.assertNotIn(fields()[1], command)
+        header = (path / 'input').read_text().splitlines()[:8]
+        self.assertEqual(header, fields())
+        self.assertIn('def cycle(', (path / 'input').read_text())
+        # Execute the exact fixed SSH bootstrap against synthetic data and a
+        # harmless program. No SSH, API, real token or remote host is involved.
+        program = 'assert ddns_config == ' + repr(fields()) + '\n'
+        result = subprocess.run(['bash', '-c', command], input='\n'.join(fields()) + '\n' + program,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_ssh_failure_exits_so_both_providers_are_retried(self):
+        path = self.wrapper({'MOCK_COMBINED_EXIT': '255'}, expected_code=255)
+        self.assertFalse((path / 'legacy').exists())
+
+    def test_missing_python_or_missing_token_falls_back_to_dogado(self):
+        for overrides in ({'MOCK_COMBINED_EXIT': '127'}, {'CF_API_TOKEN': ''},
+                          {'CF_API_TOKEN': 'bad\nvalue'}, {'CF_DDNS_ENABLED': 'false'}):
+            path = self.wrapper(overrides)
+            self.assertTrue((path / 'legacy').exists())
+
+
 def documents(text):
     return json.loads(subprocess.check_output(['yq', 'eval-all', '-o=json', '. as $doc ireduce ([]; . + [$doc])', '-'], input=text, text=True))
 
@@ -100,65 +197,31 @@ def render(*args):
 
 def contracts():
     baseline, _ = render()
-    assert len(baseline) == 1 and baseline[0]['metadata']['name'] == 'tunnel-ingress'
-    fixtures = ['--set', 'cloudflareDdns.enabled=true', '--set', 'cloudflareDdns.zoneId=' + Z,
-                '--set', 'cloudflareDdns.recordId=' + R, '--set', 'cloudflareDdns.recordName=www.example.test']
-    docs, rendered = render(*fixtures)
-    tunnel = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'tunnel-ingress')
-    assert tunnel == baseline[0], 'Enabling Cloudflare must not change the existing tunnel pod'
-    assert tunnel['spec']['template']['spec']['containers'][0]['name'] == 'remote-ping'
-    assert len(docs) == 4
-    assert all(d['metadata']['namespace'] == 'tunnel-ingress' for d in docs)
-    assert not any(d['kind'] in ('Secret', 'SealedSecret', 'Role', 'ClusterRole') for d in docs)
-    deployment = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'cloudflare-ddns')
-    pod = deployment['spec']['template']['spec']
-    assert deployment['spec']['strategy']['type'] == 'Recreate'
-    assert pod['automountServiceAccountToken'] is False
-    assert pod['securityContext']['runAsNonRoot'] is True
-    container = pod['containers'][0]
-    env = {e['name']: e['value'] for e in container['env']}
-    assert env['DRY_RUN'] == 'true'
-    assert env['TUNNEL_HOST'] == 'ip or hostname of the external host'
-    assert container['readinessProbe']['exec']['command'] == ['sh', '/app/health.sh']
-    assert container['readinessProbe']['timeoutSeconds'] == 10
-    assert container['securityContext']['readOnlyRootFilesystem'] is True
-    assert '@sha256:' in container['image']
-    policy = next(d for d in docs if d['kind'] == 'NetworkPolicy')
-    assert policy['spec']['podSelector']['matchLabels'] == {'app': 'cloudflare-ddns'}
-    assert policy['spec']['ingress'] == [] and len(policy['spec']['egress']) == 2
-    overrides, _ = render(*fixtures, '--set', 'host=89.58.40.25', '--set', 'cloudflareDdns.dryRun=false')
-    for d in overrides:
-        if d['kind'] == 'Deployment':
-            c = d['spec']['template']['spec']['containers'][0]
-            values = {e['name']: e.get('value') for e in c.get('env', [])}
-            assert values.get('HOST', values.get('TUNNEL_HOST')) == '89.58.40.25'
-            if d['metadata']['name'] == 'cloudflare-ddns':
-                assert values['DRY_RUN'] == 'false'
-    subprocess.run(['helm', 'lint', str(ROOT / 'helm'), *fixtures], check=True)
-    subprocess.run(['kubeconform', '-strict', '-summary', '-'], input=rendered, text=True, check=True)
-    # A string "false" must never become an implicit write-enabled boolean.
-    invalid = subprocess.run(['helm', 'template', 'test', str(ROOT / 'helm'), *fixtures,
+    assert len(baseline) == 1 and baseline[0]['kind'] == 'Deployment'
+    fixture = ['--set', 'cloudflareDdns.enabled=true', '--set', 'cloudflareDdns.zoneId=' + Z,
+               '--set', 'cloudflareDdns.recordId=' + R, '--set', 'cloudflareDdns.recordName=www.example.test']
+    docs, output = render(*fixture)
+    assert len(docs) == 1 and docs[0]['metadata']['name'] == 'tunnel-ingress'
+    pod = docs[0]['spec']['template']['spec']
+    assert len(pod['containers']) == 1 and pod['containers'][0]['name'] == 'remote-ping'
+    assert pod['initContainers'] == baseline[0]['spec']['template']['spec']['initContainers']
+    env = {e['name']: e for e in pod['containers'][0]['env']}
+    assert env['CF_DRY_RUN']['value'] == 'true'
+    assert env['CF_API_TOKEN']['valueFrom']['secretKeyRef'] == {'name': 'cloudflare-api-token', 'key': 'api-token', 'optional': True}
+    assert env['PING_URL'] == baseline[0]['spec']['template']['spec']['containers'][0]['env'][1]
+    clean = copy.deepcopy(docs[0])
+    clean['spec']['template']['spec']['containers'][0]['env'] = [e for e in clean['spec']['template']['spec']['containers'][0]['env'] if not e['name'].startswith('CF_')]
+    assert clean == baseline[0], 'Cloudflare must add only environment inputs to existing remote-ping'
+    assert not any(d['kind'] in ('Secret', 'SealedSecret', 'ConfigMap', 'NetworkPolicy') for d in docs)
+    chart = documents((ROOT / 'helm/Chart.yaml').read_text())[0]
+    values = documents((ROOT / 'helm/values.yaml').read_text())[0]
+    assert str(chart['version']) == str(chart['appVersion']) == str(values['tag']) == '0.0.10'
+    subprocess.run(['helm', 'lint', str(ROOT / 'helm'), *fixture], check=True)
+    subprocess.run(['kubeconform', '-strict', '-summary', '-'], input=output, text=True, check=True)
+    invalid = subprocess.run(['helm', 'template', 'test', str(ROOT / 'helm'), *fixture,
                               '--set-string', 'cloudflareDdns.dryRun=false'], capture_output=True)
     assert invalid.returncode != 0
-    if os.environ.get('DDNS_IMAGE_SMOKE') == '1':
-        archive = io.BytesIO()
-        with tarfile.open(fileobj=archive, mode='w') as tar:
-            for path in ['helm/files/cloudflare-ddns/update.py', 'helm/files/cloudflare-ddns/health.sh',
-                         'tests/test-cloudflare-ddns.py']:
-                tar.add(ROOT / path, arcname=path)
-        # CPU quota is exercised on GitHub; the local Docker host has threaded cgroups.
-        subprocess.run(['docker', 'run', '--rm', '-i', '--network=none', '--read-only', '--cap-drop=ALL',
-            '--security-opt=no-new-privileges', '--user=65532:65532',
-            *(['--cpus=0.1'] if os.environ.get('CI') == 'true' else []),
-            '--tmpfs=/work:uid=65532,gid=65532', '--tmpfs=/state:uid=65532,gid=65532',
-            '-w', '/work', container['image'], 'sh', '-ec',
-            'tar xf -; python3 -B tests/test-cloudflare-ddns.py --unit-only; '
-            'check_failure() { status=0; timeout 10 sh helm/files/cloudflare-ddns/health.sh || status=$?; test "$status" -eq 1; }; '
-            'check_failure; touch /state/last-success; timeout 10 sh helm/files/cloudflare-ddns/health.sh; '
-            'touch -t 202001010000 /state/last-success; check_failure; '
-            'touch -t 209901010000 /state/last-success; check_failure; '
-            'touch /state/last-success; INTERVAL_SECONDS=invalid check_failure'], input=archive.getvalue(), check=True)
-    print('Passed: default disabled, unchanged dogado/tunnel Deployment, shared host, dry-run, scoped pod and fast health checks.')
+    print('Passed: one existing pod/container/SSH loop, independent providers, stdin-only credential transport, dry-run default.')
 
 
 if __name__ == '__main__':
@@ -166,5 +229,4 @@ if __name__ == '__main__':
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if not result.wasSuccessful():
         raise SystemExit(1)
-    if '--unit-only' not in sys.argv:
-        contracts()
+    contracts()

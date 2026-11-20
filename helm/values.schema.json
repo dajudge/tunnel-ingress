@@ -10,6 +10,9 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "dryRun": {
+          "type": "boolean"
         }
       },
       "if": {
@@ -23,26 +26,14 @@
         ]
       },
       "then": {
-        "type": "object",
         "required": [
-          "image",
-          "recordName",
+          "dryRun",
           "zoneId",
           "recordId",
-          "dryRun",
-          "intervalSeconds",
-          "enabled",
-          "existingSecret"
+          "recordName",
+          "tokenSecret"
         ],
         "properties": {
-          "image": {
-            "type": "string",
-            "pattern": "@sha256:[a-f0-9]{64}$"
-          },
-          "recordName": {
-            "type": "string",
-            "minLength": 1
-          },
           "zoneId": {
             "type": "string",
             "pattern": "^[a-f0-9]{32}$"
@@ -51,20 +42,26 @@
             "type": "string",
             "pattern": "^[a-f0-9]{32}$"
           },
-          "dryRun": {
-            "type": "boolean"
-          },
-          "intervalSeconds": {
-            "type": "integer",
-            "minimum": 30,
-            "maximum": 3600
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "existingSecret": {
+          "recordName": {
             "type": "string",
             "minLength": 1
+          },
+          "tokenSecret": {
+            "type": "object",
+            "required": [
+              "name",
+              "key"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         }
       }

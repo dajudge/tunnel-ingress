@@ -60,3 +60,22 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.pingSecret.name }}
                   key: {{ .Values.pingSecret.key }}
+
+            {{- if .Values.cloudflareDdns.enabled }}
+            - name: CF_DDNS_ENABLED
+              value: "true"
+            - name: CF_DRY_RUN
+              value: {{ .Values.cloudflareDdns.dryRun | toString | quote }}
+            - name: CF_ZONE_ID
+              value: {{ required "cloudflareDdns.zoneId is required" .Values.cloudflareDdns.zoneId | quote }}
+            - name: CF_RECORD_ID
+              value: {{ required "cloudflareDdns.recordId is required" .Values.cloudflareDdns.recordId | quote }}
+            - name: CF_RECORD_NAME
+              value: {{ required "cloudflareDdns.recordName is required" .Values.cloudflareDdns.recordName | quote }}
+            - name: CF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflareDdns.tokenSecret.name | quote }}
+                  key: {{ .Values.cloudflareDdns.tokenSecret.key | quote }}
+                  optional: true
+            {{- end }}

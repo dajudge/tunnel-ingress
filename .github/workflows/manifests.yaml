@@ -18,5 +18,7 @@ jobs:
           sudo curl -fsSLo /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
-      - name: Validate optional DDNS without network or credentials
-        run: DDNS_IMAGE_SMOKE=1 python3 -B tests/test-cloudflare-ddns.py
+      - name: Check shell scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Test both providers and SSH transport without credentials or network
+        run: python3 -B tests/test-cloudflare-ddns.py

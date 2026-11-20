@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Reconcile one Cloudflare A record to the configured public tunnel host."""
-import argparse
 import ipaddress
 import json
-import os
-from pathlib import Path
 import re
 import socket
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -74,34 +72,57 @@ def reconcile(api, zone_id, record_id, name, host, dry_run=True, resolve=socket.
     return {'event': 'updated', 'address': address}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--once', action='store_true')
-    args = parser.parse_args()
-    interval = int(os.environ.get('INTERVAL_SECONDS', '60'))
-    if not 30 <= interval <= 3600:
-        raise ValueError('Interval must be between 30 and 3600 seconds')
-    state = Path('/state/last-success')
-    # Require an explicit false to enable writes; no implicit truthiness conversion.
-    mode = os.environ.get('DRY_RUN', 'true')
-    if mode not in ('true', 'false'):
-        raise ValueError('DRY_RUN must be true or false')
-    api = Cloudflare(Path(os.environ['TOKEN_FILE']).read_text().strip())
+def configuration(fields):
+    if len(fields) != 8 or any('\n' in f or '\r' in f for f in fields):
+        raise ValueError('Expected eight single-line configuration fields')
+    url, token, zone_id, record_id, name, host, mode, interval = fields
+    if urllib.parse.urlsplit(url).scheme not in ('https', 'http'):
+        raise ValueError('Expected an HTTP(S) dogado URL')
+    if mode not in ('true', 'false') or not 30 <= int(interval) <= 3600:
+        raise ValueError('Invalid dry-run mode or interval')
+    if not all(re.fullmatch(r'[a-f0-9]{32}', value) for value in (zone_id, record_id)):
+        raise ValueError('Expected explicit Cloudflare IDs')
+    return dict(url=url, api=Cloudflare(token), zone_id=zone_id, record_id=record_id,
+                name=name, host=host, dry_run=mode == 'true', interval=int(interval))
+
+
+def dogado_ping(url):
+    # Keep curl on the public tunnel host; credential-bearing URL goes to stdin.
+    subprocess.run(['curl', '--silent', '--show-error', '--fail', '--max-time', '20', '--config', '-'],
+                   input='url = ' + json.dumps(url) + '\n', text=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+
+def cycle(config, ping=dogado_ping, update=reconcile):
+    events = []
+    try:
+        ping(config['url'])
+        events.append({'provider': 'dogado', 'event': 'pinged'})
+    except Exception as error:
+        events.append({'provider': 'dogado', 'event': 'failed', 'error': type(error).__name__})
+    # A provider failure must not prevent attempting the other provider.
+    try:
+        result = update(config['api'], config['zone_id'], config['record_id'],
+                        config['name'], config['host'], config['dry_run'])
+        events.append(dict(result, provider='cloudflare', dry_run=config['dry_run']))
+    except Exception as error:
+        events.append({'provider': 'cloudflare', 'event': 'failed', 'error': type(error).__name__})
+    return events
+
+
+def main(fields):
+    config = configuration(fields)
     while True:
-        try:
-            result = reconcile(api, os.environ['ZONE_ID'], os.environ['RECORD_ID'],
-                               os.environ['RECORD_NAME'], os.environ['TUNNEL_HOST'], mode == 'true')
-            state.touch(mode=0o600)
-            print(json.dumps(dict(result, dry_run=mode == 'true')), flush=True)
-        except Exception as error:
-            # Do not log response bodies, request headers, or exception text containing credentials.
-            print(json.dumps({'event': 'cycle_failed', 'error': type(error).__name__}), flush=True)
-            if args.once:
-                raise SystemExit(1)
-        if args.once:
-            return
-        time.sleep(interval)
+        started = time.monotonic()
+        for event in cycle(config):
+            print(json.dumps(event), flush=True)
+        time.sleep(max(1, config['interval'] - (time.monotonic() - started)))
 
 
 if __name__ == '__main__':
-    main()
+    # The fixed SSH bootstrap reads data, then executes this public source.
+    try:
+        main(ddns_config)
+    except ValueError:
+        print(json.dumps({'event': 'invalid_configuration'}), flush=True)
+        raise SystemExit(64)
