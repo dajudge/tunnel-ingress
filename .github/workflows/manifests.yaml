@@ -20,5 +20,5 @@ jobs:
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
       - name: Check shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
-      - name: Test both providers and SSH transport without credentials or network
-        run: python3 -B tests/test-cloudflare-ddns.py
+      - name: Test generic HTTP pings against local fixtures
+        run: python3 -B tests/test-ping.py

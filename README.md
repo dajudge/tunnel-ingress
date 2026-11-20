@@ -1,54 +1,51 @@
-# Tunnel ingress and DDNS
+# HTTP keep-alive requests
 
-`remote-ping` keeps the existing dogado updater and optionally updates Cloudflare
-from the same public tunnel host, through the same SSH connection and loop.
-There is no extra Deployment, sidecar, ConfigMap, or readiness probe.
+The existing `pingSecret` supplies a URL for the remote `curl` loop. Its default
+behavior is unchanged. Optionally supply `pingConfigSecret.name/key` (key defaults
+to `config`) for additional requests using native curl configuration:
 
-`cloudflareDdns.enabled` defaults to false, preserving the original dogado loop.
-When enabled, configure the existing Cloudflare DNS-only A record's `zoneId`,
-`recordId`, and `recordName`. `dryRun` defaults to true. `tokenSecret.name/key`
-select an existing Secret in the release namespace, just as `pingSecret` supplies
-the dogado URL. With Cloudflare enabled, both referenced Secrets must exist
-before the replacement container can start. Verify unsealing before activation.
-In dogado-only mode, no Cloudflare Secret is referenced.
+```text
+url = "https://api.example.test/resource"
+request = "PATCH"
+header = "Authorization: Bearer ..."
+header = "Content-Type: application/json"
+data = "{\"content\":\"{{SSH_SERVER_IP}}\"}"
+silent
+show-error
+fail
+max-time = 20
+output = "/dev/null"
+next
+url = "https://another.example.test/ping"
+request = "GET"
+```
 
-The public SSH host needs Python 3.8+ and curl. Configuration is sent as eight
-single-line fields over SSH stdin, followed by the public runner source.
-Neither the Cloudflare token nor the dogado URL appears in the combined SSH
-command's arguments, remote files, or logs. They remain in process memory.
-The public runner is compiled in memory and both requests originate on that
-host. Its root SSH process can access the token; this is an intentional trust
-boundary. The existing migration token's permissions exceed one record.
+Curl handles the URL, method, headers and body. `next` separates requests and
+resets per-request options, including authentication headers. Supply each
+request's desired timeout/output/error options; do not use `fail-early` when all
+requests should be attempted after one fails. The existing URL is prepended as
+a separate GET, so its Secret need not change.
 
-Each minute, the remote loop attempts the dogado curl request and Cloudflare
-reconciliation independently, with provider failures logged only by class.
-Cloudflare reconciles the same `host` already used for SSH, never the home WAN.
-It requires a unique public IPv4 target and the pinned existing DNS-only A
-record. Dry-run reads only. Later explicit write enablement PATCHes only
-`content`, preserving TTL and metadata; it never creates or deletes records.
-ExternalDNS must continue excluding this anchor.
+Configuration travels over the existing SSH connection's stdin and is retained
+in remote process memory. It is not a shell script and is never evaluated as
+one. No new runtime, Pod, container, ConfigMap or provider-specific logic is
+introduced. Keep credential-bearing configuration in a Secret; only encrypted
+SealedSecrets belong in Git. Curl responses follow the supplied output options.
 
-A missing/old Python interpreter or invalid configuration falls back to the
-original dogado-only loop. Transient SSH failure exits the container so its
-normal restart retries both providers. Neither condition reruns the initializer
-unless the whole Pod is replaced. API failures stay inside the combined loop.
+The optional literal `{{SSH_SERVER_IP}}` is replaced with the server address
+reported by OpenSSH's `SSH_CONNECTION`. It is not a public-IP discovery service;
+on a host behind NAT this can be a private address. Verify it is the intended
+address before using it in an update body. Missing address information rejects
+a configuration using the placeholder. Configuration is loaded when the SSH
+session starts; Secret changes require the normal container rollout to reload.
 
-Run `python3 -B tests/test-cloudflare-ddns.py` with Helm, yq, and kubeconform.
-Tests use fake providers and SSH, verify stdin framing and secret-free logs,
-exercise both failure directions and fallback/retry behavior, and prove Helm
-adds only Cloudflare environment inputs to the existing container. No tests
-connect to the tunnel host or use real credentials.
+Run `python3 -B tests/test-ping.py` with Bash, curl, Helm, yq and kubeconform.
+Tests exercise real curl against local HTTP fixtures, method/body/header
+separation, continued requests after HTTP failures, legacy compatibility and
+stdin-only credential transport. They do not use real credentials or SSH.
 
-Delivery requires reviewing/merging this change and publishing version 0.0.10
-through the existing release workflow. A separate bootstrap draft prepares its
-chart pin and encrypted credential and removes the standalone observer. No live
-host, cluster, DNS records, ownership markers or nameservers are changed by
-preparation. The Dockerfile and tunnel setup scripts are unchanged.
-
-**Rollout remains gated:** replacing the existing Pod reruns the initializer,
-which rebuilds WireGuard and iptables. The current implementation cannot promise
-zero downtime. Keep bootstrap activation unmerged until a separately reviewed
-rollout addresses that constraint or an interruption is explicitly accepted.
-Disabling Cloudflare restores dogado-only behavior, but a Helm rollback also
-replaces the Pod and has the same tunnel-reinitialization risk. Imported DNS
-records remain intact throughout; disabling a writer does not remove them.
+Version 0.0.10 must be published before consuming the new feature. The Dockerfile,
+SSH helper and tunnel initializer are unchanged. Updating the existing Pod still
+reruns that initializer and can interrupt the tunnel; review activation separately
+rather than claiming a zero-downtime rollout. Disabling the extra configuration
+restores URL-only operation but can also require Pod replacement.

@@ -16,13 +16,8 @@ ports:
     targetPort: 30443
     protocol: udp
 
-# Both providers run through the existing remote-ping container and SSH loop.
-cloudflareDdns:
-  enabled: false
-  dryRun: true
-  zoneId: ""
-  recordId: ""
-  recordName: ""
-  tokenSecret:
-    name: cloudflare-api-token
-    key: api-token
+# Optional additional HTTP requests, expressed as native curl configuration.
+# Keep pingSecret unchanged for the existing URL-only request.
+pingConfigSecret:
+  name: ""
+  key: config
