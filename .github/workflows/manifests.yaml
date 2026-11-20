@@ -1,0 +1,24 @@
+name: Validate manifests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.21.4
+      - name: Install manifest validation tools
+        run: |
+          sudo curl -fsSLo /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+      - name: Check shell scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Test generic HTTP pings against local fixtures
+        run: python3 -B tests/test-ping.py

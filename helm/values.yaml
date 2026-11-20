@@ -5,7 +5,7 @@ sshKeySecret: ssh-key
 pingSecret:
   name: ping-secret
   key: url
-tag: 0.0.9
+tag: 0.0.10
 ports:
   - exposedPort: 80
     targetIp: someIp
@@ -15,3 +15,9 @@ ports:
     targetIp: someIp
     targetPort: 30443
     protocol: udp
+
+# Optional additional HTTP requests, expressed as native curl configuration.
+# Keep pingSecret unchanged for the existing URL-only request.
+pingConfigSecret:
+  name: ""
+  key: config

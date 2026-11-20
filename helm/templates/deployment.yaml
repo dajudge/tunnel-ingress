@@ -60,3 +60,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.pingSecret.name }}
                   key: {{ .Values.pingSecret.key }}
+
+            {{- if .Values.pingConfigSecret.name }}
+            - name: PING_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pingConfigSecret.name | quote }}
+                  key: {{ .Values.pingConfigSecret.key | quote }}
+            {{- end }}
