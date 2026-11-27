@@ -44,8 +44,17 @@ Tests exercise real curl against local HTTP fixtures, method/body/header
 separation, continued requests after HTTP failures, legacy compatibility and
 stdin-only credential transport. They do not use real credentials or SSH.
 
-Version 0.0.10 must be published before consuming the new feature. The Dockerfile,
+Version 0.0.11 must be published before consuming the new feature. The Dockerfile,
 SSH helper and tunnel initializer are unchanged. Updating the existing Pod still
 reruns that initializer and can interrupt the tunnel; review activation separately
 rather than claiming a zero-downtime rollout. Disabling the extra configuration
 restores URL-only operation but can also require Pod replacement.
+
+For configuration-only requests, set `pingSecret.name: ""` and supply
+`pingConfigSecret.name/key`. This omits `PING_URL` and sends only the supplied
+curl configuration, without an empty request or leading `next`. Defaults retain
+the URL-only mode; supplying both inputs retains the separate legacy GET.
+Neither input being configured is rejected by the chart and script before SSH.
+Publish release 0.0.11 before consuming this mode. Pod replacement can briefly
+interrupt tunnel connectivity; roll back by restoring the previous chart/image
+and URL Secret reference through the consuming GitOps repository.
