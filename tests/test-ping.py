@@ -45,7 +45,7 @@ def run_script(url, config, connection='192.0.2.1 12345 89.58.40.25 22', capture
 
 class Pings(unittest.TestCase):
     def test_methods_headers_bodies_and_failure_isolation(self):
-        for failed_path in ('/legacy', '/second'):
+        for failed_path, native_get in [(p, n) for p in ('/legacy', '/second') for n in (False, True)]:
             requests = []
             class Handler(BaseHTTPRequestHandler):
                 def record(self):
@@ -65,7 +65,12 @@ class Pings(unittest.TestCase):
                     'silent', 'show-error', 'fail', 'max-time = 2', 'output = "/dev/null"', 'next',
                     'url = ' + json.dumps(base + '/third'), 'request = "GET"',
                     'silent', 'show-error', 'fail', 'max-time = 2', 'output = "/dev/null"'])
-                code, out, err, argv, _ = run_script(base + '/legacy', config)
+                legacy_url = base + '/legacy'
+                if native_get:
+                    config = '\n'.join(['url = ' + json.dumps(legacy_url), 'request = "GET"',
+                        'silent', 'show-error', 'fail', 'max-time = 2', 'output = "/dev/null"', 'next', config])
+                    legacy_url = None
+                code, out, err, argv, _ = run_script(legacy_url, config)
                 self.assertEqual(code, 0, err)
                 self.assertEqual(requests, [('/legacy', 'GET', None, ''),
                     ('/second', 'PATCH', 'Bearer fixture-token', '{"content":"89.58.40.25","literal":"$(echo never-executed)"}'),
@@ -85,10 +90,36 @@ class Pings(unittest.TestCase):
         self.assertIn('url = "https://example.test/?key=\\"quoted\\\\value\\""', data)
         self.assertTrue(data.endswith(config + '\n'))
 
-    def test_legacy_url_only_command_is_unchanged(self):
-        code, _, _, argv, _ = run_script('https://example.test/ping', '', capture=True)
-        self.assertEqual(code, 0)
-        self.assertEqual(argv, 'while :; do date; curl \'https://example.test/ping\' || true; echo ""; sleep 60; done')
+    def test_url_only_and_native_get_use_the_same_loop(self):
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append((self.path, self.headers.get('Authorization')))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'response-must-not-be-logged')
+            def log_message(self, *args): pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            url = 'http://127.0.0.1:' + str(server.server_port) + '/get?token=fixture-token&ip={{SSH_SERVER_IP}}'
+            native = '\n'.join(['url = ' + json.dumps(url), 'request = "GET"',
+                'silent', 'show-error', 'fail', 'max-time = 20', 'output = "/dev/null"'])
+            commands = []
+            for legacy_url, config in ((url, ''), (None, native)):
+                code, out, err, argv, _ = run_script(legacy_url, config)
+                self.assertEqual(code, 0, err)
+                self.assertNotIn('fixture-token', argv + out + err)
+                self.assertNotIn('response-must-not-be-logged', out + err)
+                commands.append(argv)
+            self.assertEqual(requests, [('/get?token=fixture-token&ip=89.58.40.25', None)] * 2)
+            self.assertEqual(commands[0], commands[1])
+            code, _, _, _, data = run_script(url, '', capture=True)
+            self.assertEqual(code, 0)
+            self.assertNotIn('next', data)
+            self.assertIn('max-time = 20', data)
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
     def test_config_only_with_absent_or_empty_url(self):
         for url in (None, ''):
