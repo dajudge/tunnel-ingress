@@ -7,5 +7,6 @@ cp /ssh-key/* /root/.ssh/
 chmod 0600 /root/.ssh -R
 
 function remote() {
-  ssh -o "StrictHostKeyChecking=no" -l root $HOST "$@"
+  ssh -o "StrictHostKeyChecking=no" -o BatchMode=yes -o ConnectTimeout=10 \
+    -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -l root "$HOST" "$@"
 }

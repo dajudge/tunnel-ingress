@@ -17,23 +17,24 @@ url=${url//\\/\\\\}
 url=${url//\"/\\\"}
 [[ "$url" != *$'\n'* && "$url" != *$'\r'* ]] || exit 1
 export -n PING_URL PING_CONFIG
-{
-  if [[ -n "$url" ]]; then
-    printf 'url = "%s"\nrequest = "GET"\nsilent\nshow-error\nfail\nmax-time = 20\noutput = "/dev/null"\n' "$url"
-    if [[ -n "${PING_CONFIG:-}" ]]; then
-      printf 'next\n'
+# The repeat loop belongs to the container, never to a detached remote shell.
+while :; do
+  {
+    if [[ -n "$url" ]]; then
+      printf 'url = "%s"\nrequest = "GET"\nsilent\nshow-error\nfail\nmax-time = 20\noutput = "/dev/null"\n' "$url"
+      if [[ -n "${PING_CONFIG:-}" ]]; then
+        printf 'next\n'
+      fi
     fi
-  fi
-  printf '%s\n' "${PING_CONFIG:-}"
-} | remote 'bash -c '\''config=$(cat)
-    read -r _ _ server_ip _ <<< "${SSH_CONNECTION:-}"
-    if [[ "$config" == *"{{SSH_SERVER_IP}}"* && -z "$server_ip" ]]; then
-      echo "SSH server address is unavailable" >&2
-      exit 1
-    fi
-    config=${config//\{\{SSH_SERVER_IP\}\}/$server_ip}
-    while :; do
+    printf '%s\n' "${PING_CONFIG:-}"
+  } | remote 'timeout --signal=TERM --kill-after=5s 120s bash -euo pipefail -c '\''config=$(cat)
+      read -r _ _ server_ip _ <<< "${SSH_CONNECTION:-}"
+      if [[ "$config" == *"{{SSH_SERVER_IP}}"* && -z "$server_ip" ]]; then
+        echo "SSH server address is unavailable" >&2
+        exit 1
+      fi
+      config=${config//\{\{SSH_SERVER_IP\}\}/$server_ip}
       date
-      printf "%s\n" "$config" | curl --disable --config - || true
-      sleep 60
-    done'\'''
+      printf "%s\n" "$config" | curl --disable --config - || true'\'''
+  sleep 60
+done
